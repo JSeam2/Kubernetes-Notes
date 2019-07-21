@@ -1027,6 +1027,20 @@ readinessProbe:
   periodSeconds: 5
 ```
 
+## Kubernetes Volume Management
+Volumes are use to persist state. Pods are ephemeral and will die losing all the
+temporary data with them. ie. when kubelet restores the state it will be a clean
+state. Sometimes we need a way to restore the data even after the pods die.
+
+### Volume Types
+- emptyDir
+    - An empty volume is created for a pod as soon as it is scheduled on the
+      worker node. The volume life is coupled to the Pod. Once the pod is
+      terminated, contents in the emptyDir is deleted forever.
+
+- hostPath
+    - We share contents from the host with the pod. If the pod is deleted
+      contents can still be found on the host.
 
 
 # Reference
