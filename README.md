@@ -689,5 +689,345 @@ for discovering Services.
       and Services within that same Namespace.
 
 
+## Deployment
+### Deployment via Dashboard
+1. In this example we will deploy an nginx webserver.
+
+1. Start Minikube
+
+``` shell
+// NOTE you can specify the cluster via
+// $ minikube start -p clustername
+// If done in this way note that other commands must include the -p clustername.
+// eg. $ minkube status -p clustername
+
+$ minikube start
+
+$ minikube status
+host: Running
+kubelet: Running
+apiserver: Running
+kubectl: Correctly Configured: pointing to minikube-vm at 192.168.99.100
+
+$ minkube dashboard
+```
+
+1. You should be able to view the dashboard at the link below. Note that the
+   port number may not be the same. If you are starting the dashboard for the
+   first time note that you should be directed to the dashboard page
+
+``` shell
+http://127.0.0.1:37751/api/v1/namespaces/kube-system/services/http:kubernetes-dashboard:/proxy/
+```
+
+1. At the dashboard page click th `+CREATE` tab at the top right. From here you
+   can either create an application using a valid YAML/JSON config file or
+   manually from the `CREATE AN APP`
+
+1. Click on `CREATE AN APP` you will need to provide the following details
+    1. App Name: Set this to `webserver`
+    1. Container Image: Set this to `nginx:alpine`
+    1. Number of pods aka ReplicaCount: Set this to `3`
+    1. Service: Set this to `None` for now, we can create this later
+    1. Under `Show Advanced Options` there are label, namespace, env variables,
+       etc. By default, the app label value is set to our application name.
+
+1. Check the deployment on CLI
+
+``` shell
+// List the Deployments
+$ kubectl get deployments OR $ kubectl get deploy
+NAME        DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+webserver   3         3         3            3           2m
+
+// List the replicaSets
+$ kubectl get replicasets OR $ kubectl get rs
+NAME                   DESIRED   CURRENT   READY     AGE
+webserver-6c56d468fc   3         3         3         3m
+
+// List the pods
+$ kubectl get pods
+NAME                         READY     STATUS    RESTARTS   AGE
+webserver-6c56d468fc-42dt9   1/1       Running   0          4m
+webserver-6c56d468fc-7r2c7   1/1       Running   0          4m
+webserver-6c56d468fc-l5dmk   1/1       Running   0          4m
+```
+
+1. Get more info using labels and selectors using `kubectl describe`
+
+``` shell
+$ kubectl describe pod webserver-6c56d468fc-42dt9
+```
+
+1. List the pods using their attached labels, note that label2 is empty
+
+``` shell
+$ kubectl get pods -L k8s-app,label2
+NAME                         READY     STATUS    RESTARTS   AGE       K8S-APP     LABEL2
+webserver-6c56d468fc-42dt9   1/1       Running   0          16m       webserver
+webserver-6c56d468fc-7r2c7   1/1       Running   0          16m       webserver
+webserver-6c56d468fc-l5dmk   1/1       Running   0          16m       webserver
+```
+
+1. List the pods with a given label. Note `=` and `==` can be used interchangeably
+
+``` shell
+$ kubectl get pods -l k8s-app==webserver OR $ kubectl get po -l k8s-app=webserver
+NAME                         READY     STATUS    RESTARTS   AGE
+webserver-74d8bd488f-dwbzz   1/1       Running   0          17m
+webserver-74d8bd488f-npkzv   1/1       Running   0          17m
+webserver-74d8bd488f-wvmpq   1/1       Running   0          17m
+
+// Note if you give a different label selector you shouldn't see anything
+$ kubectl get po -l k8s-app=webserver
+No resources found
+```
+
+### Deployment using the CLI
+1. Delete the previous deployment
+
+``` powershell
+$ kubectl delete deployments webserver
+
+// check if replicasets and pods are still found
+$ kubectl get rs
+No resources found
+
+$ kubectl get po
+No resources found
+```
+
+1. Create a yaml config file with the following deployment details
+
+``` yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webserver
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+```
+
+1. Create the deployment using the `-f` option
+
+``` shell
+$ kubectl create -f webserver.yaml
+deployment.apps/webserver created
+```
+
+1. Check replicasets and pods
+
+``` shell
+$ kubectl get rs
+NAME                   DESIRED   CURRENT   READY   AGE
+webserver-5c69f5ccbf   3         3         3       63s
+
+$ kubectl get po
+NAME                         READY   STATUS    RESTARTS   AGE
+webserver-5c69f5ccbf-jfm9t   1/1     Running   0          72s
+webserver-5c69f5ccbf-kg6jk   1/1     Running   0          72s
+webserver-5c69f5ccbf-knc4f   1/1     Running   0          72s
+```
+
+### Exposing an Application
+1. We will need to define a service to expose the pods. Create
+   `webserver-svc.yaml` file with the following contents
+
+``` shell
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+  labels:
+    run: web-service
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    protocol: TCP
+  selector:
+    app: nginx
+```
+
+1. Create th webserver-svc
+
+``` shell
+$ kubectl create -f webserver-svc.yaml
+service/web-service created
+```
+
+1. At this point you can explicitly expose the previously created Deployment
+   using the `expose` command. **NOTE: It is not necessary to create the
+   deployment first then create the service. This can be done in any order**
+
+``` powershell
+$ kubectl expose deployment webserver --name=web-service --type=NodePort
+service/web-service exposed
+```
+
+1. List the services. Notice the cluster ip and port of web-service
+
+``` shell
+$ kubectl get services
+NAME          TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+kubernetes    ClusterIP   10.96.0.1        <none>        443/TCP        43h
+web-service   NodePort    10.101.143.185   <none>        80:30573/TCP   22m
+
+
+// Get more details about the service
+$ kubectl describe service web-service
+Name:                     web-service
+Namespace:                default
+Labels:                   run=web-service
+Annotations:              <none>
+Selector:                 app=nginx
+Type:                     NodePort
+IP:                       10.101.143.185
+Port:                     <unset>  80/TCP
+TargetPort:               80/TCP
+NodePort:                 <unset>  30573/TCP
+Endpoints:                172.17.0.4:80,172.17.0.6:80,172.17.0.7:80
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:                   <none>
+```
+
+1. Once the application is running we can get the ip address of minikube VM and
+   goto the exposed port found via `kubectl get services`
+
+``` shell
+// If using default
+$ minikube ip
+
+// If using -p
+$ minikube ip -p clustername
+
+192.168.99.120
+// Now you can open the browser and access the application on
+// 192.168.99.120:30573 for example
+// Alternatively, you can run
+$ minikube service web-service
+```
+
+### Liveness and Readiness Probes
+- Liveness and Readiness Probes allows `kubelet` to control the health of the
+  application running inside apod.
+
+- Readiness Probe checks if the containers are ready. Allow enough time for the
+  Readiness Probe to possibly fail a few times before a pass then check the
+  Liveness Probe. **If the Liveness Probe and Readiness Probe overlaps the
+  container will never reach the ready state**
+
+- Liveness Probe are used to check if the application is alive. if the
+  application is unresponsive either due to deadlock or memory pressure. The
+  container is effectively dead. You should restart the container to make the
+  application available. Liveness probes help us restart the container
+  programmatically should a health check fail.
+    - Liveness Probes can be set by defining:
+        - Liveness Command
+        - Liveness HTTP request
+        - TCP Liveness Probe
+
+### Liveness Probes
+#### Liveness Command
+- In this example we check for the existence of `/tmp/healthy`. We configure a
+  livenessProbe to check for this every 5 seconds. Suppose if we do not find
+  `/tmp/healthy`, the Pod would get restarted.
+
+``` yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    test: liveness
+  name: liveness-exec
+spec:
+  containers:
+  - name: liveness
+    image: k8s.gcr.io/busybox
+    args:
+    - /bin/sh
+    - -c
+    - touch /tmp/healthy; sleep 30; rm -rf /tmp/healthy; sleep 600
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/healthy
+      initialDelaySeconds: 5
+      periodSeconds: 5
+```
+
+#### Liveness HTTP Request
+- In this example, we make kubelet send a `HTTP GET` REQUEST TO THE `/healthz`
+  endpoint of the application on port 8080. If we get a failure, the kubelet
+  will restart the affected container; otherwise, it would consider the
+  application to be alive.
+
+``` yaml
+livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+        httpHeaders:
+        - name: X-Custom-Header
+          value: Awesome
+      initialDelaySeconds: 3
+      periodSeconds: 3
+```
+
+#### TCP Liveness Probe
+- In this example, we make kubelet try to open the TCP socket to the container
+  running the application. If it succeeds, the application is considered
+  healthy, otherwise the kubelet would mark it as unhealthy and restart the
+  affected container
+
+``` yaml
+livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+```
+
+### Readiness Probes
+- We use readiness probes to check if the application meet certain conditions
+  before they can serve traffic.
+- Using readiness probes we can ensure:
+    - that the depending service is ready
+    - some large data set is loaded
+    - etc.
+-  A pod with containers that do not report ready status will not receive
+   traffic from kuberentes services
+
+- Readiness are similar configured to liveness probes. Example
+
+``` yaml
+readinessProbe:
+  exec:
+    command:
+    - cat
+    - /tmp/healthy
+  initialDelaySeconds: 5
+  periodSeconds: 5
+```
+
+
+
 # Reference
 [Introduction to Kubernetes Course on edX](https://courses.edx.org/courses/course-v1:LinuxFoundationX+LFS158x+2T2019)
