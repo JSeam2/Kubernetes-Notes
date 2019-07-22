@@ -1042,6 +1042,229 @@ state. Sometimes we need a way to restore the data even after the pods die.
     - We share contents from the host with the pod. If the pod is deleted
       contents can still be found on the host.
 
+- gcePersistentDisk
+    - Using gcePersistentDisk Volume type, we can mount a google compute engine
+       persistent disk into a pod
+
+- awsElasticBlockStore
+    - Using this we can mount an AWS EBS Volume to a pod
+
+- azureDisk
+    - With azureDisk we can mount a Microsoft Azure Data Disk into a Pod
+
+- azureFile
+    - With azureFile we can mount a Microsoft Azure File Volume into a Pod
+
+- cephfs
+    - With cephfs, an existing CephFS volume can be mounted into a Pod. When a
+      Pod terminates, the volume is unmounte and the contents of the volume are
+      preserved
+
+- nfs
+    - With nfs, we can mount an NFS share into a Pod
+
+- iscsi
+    - With iscsi, we can mount an iSCSI share into a Pod
+
+- secret
+    - With the secret Volume Type, we can pass sensitive information, such as
+      passwords, to Pods.
+
+- configMap
+    - With configMap objects, we can provide configuration data, or shell
+      commands and arguments into a Pod
+
+- persistentVolumeClaim
+    - We can attach a PersistentVolume to a Pod using a persistentVolumeClaim
+
+### PersistentVolumes
+- In the typical IT organization, storage is managed by sysadmin. The end use
+  just receives instruction to use the storage but is abstracted from the
+  storage management
+
+- Containers would like to follow a similar principle. However, given the large
+  variations in volume types this is difficult.
+
+- Kubernetes resolves this by introducing the **PersistentVolume (PV)**
+  subsystem.
+    - PV provides APIs for user and admin to manage and consume persistent
+      storage.
+    - PVs are network-attached storage in the cluster which is provisioned by
+      the admin
+    - To manage the volume, it uses **PersistentVolume API*** resource type
+    - To consume the volume it uses the **PersistentVolumeClaim API** and
+      consumes it
+
+- PV can be dynamically provisioned based on the StorageClass resource. A
+  StorageClass contains pre-defined provisioners and parameters to create a
+  PersistentVolume.
+
+- Using PersistentVolumeClaims, a user sends the request for dynamic PV
+  creation, which gets wired to the StorageClass resource.
+
+- Refer to
+  [docs](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistent-volumes)
+  to see the types of volume types that support managing storage using
+  Persistent Volumes
+
+### PersistentVolumeClaims
+- A **PersistentVolumeClaim (PVC)** is a request for storage by a user.
+- Users request for PersistentVolume resources based on type, access mode, and size.
+- There are 3 access modes:
+    - ReadWriteOnce (read-write by a single node)
+    - ReadOnlyMany (read-only by many nodes)
+    - ReadWriteMany (read-write by many nodes)
+- Once a suitable PersistentVolume is found, it is bound to a PersistentVolumeClaim
+- Once bound, the PersistentVolumeClaim can be used in a Pod
+- Should a user finish work, it can release the attached PersistentVolumes. The
+  underlying PersistentVolumes can be
+    - reclaimed (for an admin to verify or aggregate data)
+    - deleted (both data and volume are deleted)
+    - recycled (only the data is deleted)
+- More info in [docs](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims)
+
+### Container Storage Interface (CSI)
+- Container Orchestrators like Kubernetes, Mesos, Docker, Cloud Foundry used to
+  have their own methods of managing storage using Volumes.
+- For storage vendors, it was challenging to manage different Volume plugins
+  for different orchestrators.
+- This called for standardization of the Volume interface. This specification is
+  found [here](https://github.com/container-storage-interface/spec/blob/master/spec.md**
+- CSI went from alpha to stable support from release v1.9 and v1.13.
+
+
+## ConfigMaps and Secrets
+- You will need to pass runtime parameters like
+    - configuration details
+    - permissions
+    - passwords
+    - token
+- **ConfigMaps API** resources are used in the case when you need to share information between
+  applications
+- **Secret API** resources act like ConfigMaps but for private information
+
+### ConfigMaps
+- ConfigMaps allow us to decouple the configuration details from the container
+  image.
+- Configuration data are stored as **key-value pairs**
+- Information in ConfigMaps are consumed by Pods or any other system components
+  and controllers, environment variables, sets of commands and arguments, or
+  volumes.
+- You can create ConfigMaps from literal values, from configuratio files, from
+  one or more files or directories.
+
+#### Create a ConfigMap from Literal Values
+1. Create the ConfigMap
+
+``` shell
+$ kubectl create configmap my-config \
+> --from-literal=key1=value1 \
+> --from-literal=key2=value2
+
+configmap/my-config created
+```
+
+1. Display the ConfigMap Details for `my-config`
+
+``` shell
+// use -o yaml to spit the output in yaml format
+$ kubectl get configmaps my-config -o yaml
+```
+
+#### Create a ConfigMap from a Configuration File
+1. Create a configuration file with the following content and name it `customer1-configmap.yaml`. Make sure you specify
+   **apiVersion**, **kind**, **metadata**, **data**
+
+``` yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: customer1
+data:
+  TEXT1: Customer1_Company
+  TEXT2: Welcomes You
+  COMPANY: Customer1 Company Technology Pct. Ltd.
+```
+
+1. Once you created this file you can run the command
+
+``` shell
+$ kubectl create -f customer1-configmap.yaml
+configmap/customer1 created
+```
+
+#### Create a ConfigMap from a File
+1. Create a configuration file `permission-reset.properties` with the following
+   data
+```
+permission=read-only
+allowed="true"
+resetCount=3
+```
+
+1. Run the create configmap with the following command
+
+``` shell
+$ kubectl create configmap permission-config --from-file=permission-reset.properties
+```
+
+### Use ConfigMaps Inside Pods
+- **OPTION 1:** As environment variables
+    - Inside a container, we can retrieve the key-value data of an entire
+      ConfigMap or the values of specific ConfigMap keys as environment
+      variables.
+    - Use `full-config-map` to retrieve all the values of the ConfigMap keys
+        - Example:
+        ``` yaml
+        ...
+        containers:
+        - name: my-app-full-container
+            image: myapp
+            envFrom:
+            - configMapRef:
+            name: full-config-map
+        ...
+        ```
+    - Alternatively, you can specify specific key-value pairs from separate
+      ConfigMaps in the following manner
+        - Example:
+        ``` yaml
+        ...
+          containers:
+          - name: myapp-specific-container
+            image: myapp
+            env:
+            - name: SPECIFIC_ENV_VAR1
+              valueFrom:
+                configMapKeyRef:
+                  name: config-map-1
+                  key: SPECIFIC_DATA
+            - name: SPECIFIC_ENV_VAR2
+              valueFrom:
+                configMapKeyRef:
+                  name: config-map-2
+                  key: SPECIFIC_INFO
+        ```
+
+- **OPTION 2:** As Volumes
+    - We can mount a vol-config-map ConfigMap as a Volume inside a Pod. For each
+      key in the ConfigMap, a file gets created in the mount path (where the
+      file is named with the key name) and the content of that file becomes the
+      respective key's value.
+    - Example:
+    ``` yaml
+    ...
+      containers:
+      - name: myapp-vol-container
+        image: myapp
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: vol-config-map
+    ```
 
 # Reference
 [Introduction to Kubernetes Course on edX](https://courses.edx.org/courses/course-v1:LinuxFoundationX+LFS158x+2T2019)
