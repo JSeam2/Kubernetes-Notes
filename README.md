@@ -1266,5 +1266,157 @@ $ kubectl create configmap permission-config --from-file=permission-reset.proper
           name: vol-config-map
     ```
 
+### Secrets
+- If you store secrets in Deployment YAML file they will be exposed. The secrets
+  would be available to anyone who has access to the configuration file
+- The Secret object helps us by allowing us to encode sensitive information
+  before sharing it.
+- Secret object stores information like passwords, token, or keys in
+  **key-value** pairs similar to ConfigMaps
+- We refer to the Secret object without exposing its content.
+- **IMPORTANT** Scret data is stored as plain text inside **etcd**, administrators
+  must limit access to the API server and **etcd**.
+
+#### Create a Secret from Literal
+- To create a Secret we can use `kubectl create secret**
+
+``` shell
+$ kubectl create secret generic my-password --from-literal=password=mysqlpassword
+```
+
+- After successfully creating a secret we can analyze it with the `get` and
+  `describe` commands. They do not reveal the content of the secret. The type is
+  listed as Opaque.
+
+``` shell
+$ kubectl get secret my-password
+NAME                  TYPE                                  DATA   AGE
+my-password           Opaque                                1      7s
+
+$ kubectl describe secret my-password
+Name:         my-password
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+password:  13 bytes
+```
+
+#### Create a Secret from a Configuration File
+- We can create a Secret manually from a YAML config file.
+- **USING base64**
+    - Encode the string you want to save in base64, note that this is just an
+    encoding and not an encryption. Anyone can easily decode this and get your secret!
+    ``` shell
+    $ echo secretstring | base64
+    c2VjcmV0c3RyaW5nCg==
+
+    // Note
+    $ echo "c2VjcmV0c3RyaW5nCg==" | base64 --decode
+    secretstring
+    ```
+
+    - Use it in the configuration file save as `mypass-base64.yaml`
+    ``` yaml
+    apiVersion: v1
+    kind: Secret
+    metadata:
+        name: my-password
+    type: Opaque
+    data:
+        password: c2VjcmV0c3RyaW5nCg==
+    ```
+    - Now you can run `kubectl create`
+    ``` shell
+    $ kubectl create -f mypass-base64.yaml
+    secret/my-password created
+    ```
+
+    - **FYI** if you see a `Error from server (AlreadyExists): error when creating "mypass-base64.yaml": secrets "my-password" already exists`
+      you can either delete the previous `my-password` or rename this secret.
+    ``` shell
+    $ kc delete secret my-password
+    secret "my-password" deleted
+    ```
+
+- **USING stringData**
+    - Create a a new configuration file, save as `mypass-string.yaml`
+    ``` yaml
+    apiVersion: v1
+    kind: Secret
+    metadata:
+        name: my-password
+    type: Opaque
+    stringData:
+        password: secretstring
+    ```
+    - Now you can run `kubectl create`
+    ``` shell
+    $ kubectl create -f mypass-string.yaml
+    secret/my-password created
+    ```
+
+#### Create a Secret from a File
+- We can create a secret from a file using the `kubectl create secret` command
+- First encode the sensitive data into base64 and store it in a file
+``` powershell
+$ echo secretstring | base64 > password.txt
+```
+- Run the kubectl create secret command
+
+``` shell
+$ kubectl create secret generic my-password --from-file=password.txt
+secret/my-password created
+```
+
+### Using Secrets inside Pods
+- Like ConfigMaps, Secrets can be consumed by containers inside pods as
+    1. Environment variables
+    1. mounted data volumes
+- You can reference secrets in their entirety or specific key-values
+
+- **Using Secrets as Environment Variables**
+
+``` yaml
+...
+spec:
+  containers:
+  - image: wordpress:4.7.4-apache
+    name: wordpress
+    env:
+    - name: WORDPRESS_DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: my-password
+          key: password
+
+...
+```
+
+- **Using Secrets as Files from a Pod**
+
+``` yaml
+...
+spec:
+  containers:
+  - image: wordpress:4.7.4-apache
+    name: wordpress
+    volumeMounts:
+    - name: secret-volume
+      mountPath: "/etc/secret-data"
+      readOnly: true
+  volumes:
+  - name: secret-volume
+    secret:
+      secretName: my-password
+```
+
+## Ingress
+- Alternative way to expose services to the world. LoadBalancers are expensive
+
 # Reference
 [Introduction to Kubernetes Course on edX](https://courses.edx.org/courses/course-v1:LinuxFoundationX+LFS158x+2T2019)
