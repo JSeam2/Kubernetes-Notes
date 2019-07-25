@@ -1416,7 +1416,251 @@ spec:
 ```
 
 ## Ingress
-- Alternative way to expose services to the world. LoadBalancers are expensive
+- Alternative way to expose services to the world. LoadBalancers are expensive.
+  We can use ingress to help with this.
 
-# Reference
+- Ingress allows you to access cluster Services by configuring a Layer 7
+  HTTP/HTTPS load balancer for Services and provides the following
+    - TLS (Transport Layer Security)
+    - Name-based virtual hosting
+    - Fanout routing
+    - Loadbalancing
+    - Custom rules
+
+- With Ingress, users don't connect directly to services. Instead, users reach
+  the Ingress endpoint and from there is forwarded to the desired service.
+    - **Name-based Virtual Hosting** connect to `blue.example.com` or `green.example.com`:
+    ``` yaml
+    apiVersion: networking.k8s.io/v1beta1
+    kind: Ingress
+    metadata:
+      name: virtual-host-ingress
+      namespace: default
+    spec:
+      rules:
+      - host: blue.example.com
+        http:
+          paths:
+          - backend:
+            serviceName: webserver-blue-svc
+            servicePort: 80
+      - host: green.example.com
+        http:
+          paths:
+          - backend:
+            serviceName: webserver-green-svc
+            servicePort: 80
+    ```
+    - **Fanout Ingress Rules** connect to `example.com/blue` or `example.com/green`
+    ``` yaml
+    apiVersion: networking.k8s.io/v1beta1
+    kind: Ingress
+    metadata:
+      name: fan-out-ingress
+      namespace: default
+    spec:
+      rules:
+      - host: example.com
+        http:
+          paths:
+          - path: /blue
+            backend:
+              serviceName: webserver-blue-svc
+              servicePort: 80
+          - path: /green
+            backend:
+              serviceName: webserver-green-svc
+              servicePort: 80
+    ```
+
+### Ingress Controller
+-  The ingress Controller is an application watching the Master Node's API
+   server for changes in the ingress resources and updates the Layer 7 Load
+   Balancer accordingly.
+
+- Kubernetes supports different Ingress Controllers, and, if needed we can also
+  build our own.
+
+- Commonly used Ingress Controllers are
+    - GCE L7 Load Balancer Controller
+    - Nginx Ingress Controller
+    - Istio
+    - Kong
+    - Traefik
+
+- Start the Ingress Controller with Minikube. **NOTE: Ingress Controller is
+  disabled by default**
+``` shell
+$ minikube addons enable ingress
+```
+
+### Deploy an Ingress Resource
+- Once the Ingress Controller is deployed, we can create an Ingress resouce
+  using the `kubectl create` command.
+  ``` shell
+  $ kubectl create -f virtual-host-ingress.yaml
+  ```
+
+
+## Advanced Topics
+### Annotations
+- Non-identifying key-value data unlike labels
+- Mainly used to
+    1. Store build/release IDs, PR numbers, git branch
+    1. Phone/pager numbers of people responsible
+    1. Pointers to logging, monitoring, analytics, audit repositories, debugging tools
+
+- Example we can use annotations when creating a Deployment
+``` yaml
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: webserver
+  annotations:
+    description: Deployment based PoC dates 2 May 2019
+```
+
+- Display annotations
+
+``` shell
+$ kubectl describe deployment webserver
+Name:                webserver
+Namespace:           default
+CreationTimestamp:   Fri, 03 May 2019 05:10:38 +0530
+Labels:              app=webserver
+Annotations:         deployment.kubernetes.io/revision=1
+                     description=Deployment based PoC dates 2nd May 2019
+```
+
+### Jobs and Cronjobs
+- A Job creates one or more Pods to perform a task
+- The Job object takes the responsibility of Pod failures. It make sure that the
+  given task is completed successfully.
+- Once the task is complete, all the Pods that have been created will be
+  terminated automatically.
+- Job Options Include:
+    - **parallelism**: Set the number of pods allowed to run in parallel
+    - **completions** set the number of expected completions
+    - **activeDeadlineSeconds**: Set the duration of the job
+    - **backoffLimit**: Set the nubmer of retries before Job is marked as failedjjjjkj
+- Starting with Kubernetes 1.4 we can also perform jobs at scheduled times/dates
+  with **CronJobs**
+- CronJob Options Include:
+    - **startingDeadlineSeconds**: to set the deadline to start a Job if
+      scheduled time was missed
+    - **concurrencyPolicy**: To allow or forbid concurrent Jobs or to replace
+      old Jobs with new ones.
+
+### Quota Management
+- When there are many users sharing a Kubernetes cluster we need to ensure fair
+  usage.
+- We can set the following types of quotas per Namespace:
+    - **Compute Resource Quota**
+    - **Storage Resource Quota**
+    - **Object Count Quota**
+
+### Autoscaling
+- While it is still fairly easy to manually scale a few Kubernetes objects, this
+  may not be a practical solution for a production-ready cluster where hundreds
+  or thousands of objects are deployed.
+
+- We will need a dynamic scaling solution which adds or removes objects from the
+  cluster based on resource utilization, availability, and requirements.
+
+- Autoscaling is implemented in a Kubernetes Cluster via controllers which
+  periodically adjust the number of running objects basedo n single, multiple,
+  or custom metrics. There are various types of autoscalers available in
+  Kubernetes which can be implemented individually or combined for a more robust
+  autoscaling solution
+    - **Horizontal Pod Autoscaler (HPA)**
+    - **Vertical Pod Autoscaler (VPA)**
+    - **Cluster Autoscaler**
+
+### DaemonSets
+- DaemonSets are objects that are running on all nodes at all times.
+- Sometimes we may need an object to collect monitoring data from all nodes.
+  DaemonSets are the solution to this.
+- It is a critical controller API resource for multi-node Kubernetes clusters
+- The kube-proxy agent running as a Pod on every single node in the cluster is
+  managed by a `DaemonSet`
+- If a node is added to a cluster, a pod from a given DaemonSet is automatically
+  created on it.
+    - Although it ensures an automated process, the DaemonSet's Pods are placed
+      on nodes by the cluster's default Scheduler
+    - If the node dies or it is removed from the cluster, the respective Pods are
+      garbage collected.
+    - If a DaemonSet is deleted, all Pods it created are deleted as well
+- A newer feature of the DaemonSet resource allows for its Pods to be scheduled
+  only on specific nodes by configuring nodeSelectors and node affinity rules.
+- DaemonSets support rolling updates and rollbacks.
+
+### StatefulSets
+- The StatefulSet controller is used for stateful applications which require a
+  unique identity, such as name, network identifications, strict ordering, etc.
+- Examples inclue MySQL cluster, etcd cluster.
+- The StatefulSet controller provides identity and guaranteed ordering of
+  deployment and scaling to Pods.
+- Similar to Deployments, StatefulSets use ReplicaSets as intermediary Pod
+  controllers and support rolling updates and rollbacks.
+
+### Kubernetes Federation
+- With Kubernetes Cluster Federation we can manage multiple Kubernetes clusters
+  from a single control plane.
+- This is still an Alpha feature.
+- It is useful when we want to build hybrid solution where we can have clusters
+  running inside our private datacenter and another cluster running in the
+  public cloud, allowing us to avoid provider lock-in
+- You may assign different weights for each cluster in the Federation to
+  distribute the load based on custom rules.
+
+### Custom Resources
+- Most of the time the provided resources are sufficient.
+- Should we need additional functionality we can create Custom Resources. Doing
+  so we won't need to modify Kubernetes' Source
+- Custom resources are dynamic and can appear and disappera in an already
+  running cluster at any time.
+- To make a resource declarative, we must create and install a custom
+  controller, which can interpret the resource structure and perform the
+  required actions.
+- Custom controllers can be deployed and managed in an already running cluster
+- **Two ways to add custom resource**
+    1. **Custom Resource Definitions (CRDs)**: Easiest way as no custom resources
+       are required
+    1. **API aggregation**: Allows for more fine-grained control
+
+### Helm and Tiller
+- To deploy application we use different Kubernetes Manifests such as
+  Deployments, Services, Volume Claims, Ingress, etc.
+- It can be tiresome to deploy them on by one. We can bundle all those manifest
+  after templatizing them into a well-defined format, along with other metadata.
+- This bundle is referred to as Chart.
+- There Charts can then be served via repositories, such as those we have for
+  rpm and deb packages.
+- **Helm** is a package manager analogous to `yum` and `apt`
+- Helm has two components
+    - **Helm** which runs on your user's workstation
+    - **Tiller** which runs inside your kubernetes cluster
+- View sample charts [here](https://github.com/helm/charts)
+
+### Security Context and Pod Security Policies
+- At times we need to control specifi privileges and access control settings for
+  Pods and Containers
+- **Security Contexts**
+    - Allows us to set Discretionary Access Cotnrol for object access
+      permissions, privileged running, capabilities, security labels, etc.
+    - However, their effect is limited to the individual Pods and Containers
+      where such context configuration settings are incorporated in the `spec` section
+- **Pod Security Policies**
+- Used to apply security settings to multiple Pods and Containers cluster-wide.
+- Allows for more fine-grained security settings to control the usage of the:
+    - host namespace,
+    - host networking and ports,
+    - file system groups,
+    - usage of volume types,
+    - enforce container user and group ID, root privilege escalation
+
+### Network Policies
+
+
+# References
 [Introduction to Kubernetes Course on edX](https://courses.edx.org/courses/course-v1:LinuxFoundationX+LFS158x+2T2019)
